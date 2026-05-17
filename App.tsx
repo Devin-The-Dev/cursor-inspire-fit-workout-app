@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -11,8 +12,17 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ExerciseVideoPlayer } from './src/components/ExerciseVideoPlayer';
 import { generateWorkout } from './src/generateWorkout';
-import type { InspirationKind, WorkoutRoutine } from './src/types';
+import type {
+  ActivityLevel,
+  Gender,
+  InspirationKind,
+  UserProfile,
+  WorkoutDuration,
+  WorkoutRoutine,
+} from './src/types';
+import { DEFAULT_PROFILE } from './src/types';
 
 const ACCENT = '#34d399';
 const BG = '#0c1222';
@@ -26,25 +36,70 @@ const KINDS: { key: InspirationKind; label: string; hint: string }[] = [
   { key: 'character', label: 'Fictional character', hint: 'e.g. superhero, anime lead, book hero' },
 ];
 
+const GENDERS: { key: Gender; label: string }[] = [
+  { key: 'female', label: 'Female' },
+  { key: 'male', label: 'Male' },
+  { key: 'non_binary', label: 'Non-binary' },
+  { key: 'prefer_not_to_say', label: 'Prefer not to say' },
+];
+
+const ACTIVITY_LEVELS: { key: ActivityLevel; label: string }[] = [
+  { key: 'sedentary', label: 'Sedentary' },
+  { key: 'light', label: 'Light' },
+  { key: 'moderate', label: 'Moderate' },
+  { key: 'active', label: 'Active' },
+  { key: 'very_active', label: 'Very active' },
+];
+
+const WORKOUT_DURATIONS: { key: WorkoutDuration; label: string }[] = [
+  { key: 30, label: '30 minutes' },
+  { key: 45, label: '45 minutes' },
+  { key: 60, label: '1 hour' },
+];
+
+function parseAge(raw: string): number {
+  const n = parseInt(raw.replace(/\D/g, ''), 10);
+  if (Number.isNaN(n)) return DEFAULT_PROFILE.age;
+  return Math.min(90, Math.max(13, n));
+}
+
+function buildProfile(
+  ageText: string,
+  gender: Gender,
+  activityLevel: ActivityLevel,
+  durationMinutes: WorkoutDuration
+): UserProfile {
+  return { age: parseAge(ageText), gender, activityLevel, durationMinutes };
+}
+
 function HomeBody() {
   const insets = useSafeAreaInsets();
   const [kind, setKind] = useState<InspirationKind>('sport');
   const [name, setName] = useState('');
+  const [ageText, setAgeText] = useState(String(DEFAULT_PROFILE.age));
+  const [gender, setGender] = useState<Gender>(DEFAULT_PROFILE.gender);
+  const [activityLevel, setActivityLevel] = useState<ActivityLevel>(DEFAULT_PROFILE.activityLevel);
+  const [durationMinutes, setDurationMinutes] = useState<WorkoutDuration>(DEFAULT_PROFILE.durationMinutes);
   const [variation, setVariation] = useState(0);
   const [routine, setRoutine] = useState<WorkoutRoutine | null>(null);
+  const [activeVideo, setActiveVideo] = useState<{ id: string; title: string } | null>(null);
 
   const hint = useMemo(() => KINDS.find((k) => k.key === kind)?.hint ?? '', [kind]);
+  const profile = useMemo(
+    () => buildProfile(ageText, gender, activityLevel, durationMinutes),
+    [ageText, gender, activityLevel, durationMinutes]
+  );
 
   const onGenerate = () => {
     const next = variation + 1;
     setVariation(next);
-    setRoutine(generateWorkout(kind, name, next));
+    setRoutine(generateWorkout(kind, name, next, profile));
   };
 
   const onNewVariation = () => {
     const next = variation + 1;
     setVariation(next);
-    setRoutine(generateWorkout(kind, name, next));
+    setRoutine(generateWorkout(kind, name, next, profile));
   };
 
   return (
@@ -61,8 +116,81 @@ function HomeBody() {
           <Text style={styles.kicker}>InspireFit</Text>
           <Text style={styles.title}>Workouts from what motivates you</Text>
           <Text style={styles.lede}>
-            Pick a sport, a celebrity, or a fictional character. We’ll shape sets, density, and movement patterns to match that vibe.
+            Pick a sport, a celebrity, or a fictional character. Sets and reps scale to your age, gender, and activity level.
           </Text>
+        </View>
+
+        <Text style={styles.sectionLabel}>About you</Text>
+        <Text style={styles.fieldLabel}>Age</Text>
+        <TextInput
+          value={ageText}
+          onChangeText={setAgeText}
+          placeholder="30"
+          placeholderTextColor="#64748b"
+          style={styles.input}
+          keyboardType="number-pad"
+          maxLength={2}
+          returnKeyType="done"
+        />
+
+        <Text style={styles.fieldLabel}>Gender</Text>
+        <View style={styles.row}>
+          {GENDERS.map((item) => {
+            const active = gender === item.key;
+            return (
+              <Pressable
+                key={item.key}
+                onPress={() => setGender(item.key)}
+                style={({ pressed }) => [
+                  styles.chip,
+                  active && styles.chipActive,
+                  pressed && styles.chipPressed,
+                ]}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={styles.fieldLabel}>Activity level</Text>
+        <View style={styles.row}>
+          {ACTIVITY_LEVELS.map((item) => {
+            const active = activityLevel === item.key;
+            return (
+              <Pressable
+                key={item.key}
+                onPress={() => setActivityLevel(item.key)}
+                style={({ pressed }) => [
+                  styles.chip,
+                  active && styles.chipActive,
+                  pressed && styles.chipPressed,
+                ]}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={styles.fieldLabel}>Workout length</Text>
+        <View style={styles.row}>
+          {WORKOUT_DURATIONS.map((item) => {
+            const active = durationMinutes === item.key;
+            return (
+              <Pressable
+                key={item.key}
+                onPress={() => setDurationMinutes(item.key)}
+                style={({ pressed }) => [
+                  styles.chip,
+                  active && styles.chipActive,
+                  pressed && styles.chipPressed,
+                ]}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <Text style={styles.sectionLabel}>Inspiration type</Text>
@@ -116,6 +244,7 @@ function HomeBody() {
               <Text style={styles.metaBadge}>{routine.focusLabel}</Text>
               <Text style={styles.metaTime}>~{routine.estimatedMinutes} min</Text>
             </View>
+            <Text style={styles.tailoring}>{routine.tailoringLabel}</Text>
 
             {routine.sections.map((sec) => (
               <View key={sec.title} style={styles.block}>
@@ -124,6 +253,21 @@ function HomeBody() {
                   <View key={ex.name + ex.detail} style={styles.exercise}>
                     <Text style={styles.exerciseName}>{ex.name}</Text>
                     <Text style={styles.exerciseDetail}>{ex.detail}</Text>
+                    <Pressable
+                      onPress={() => {
+                        if (ex.videoId) {
+                          setActiveVideo({ id: ex.videoId, title: ex.name });
+                        } else {
+                          Linking.openURL(ex.videoUrl);
+                        }
+                      }}
+                      style={({ pressed }) => [styles.videoBtn, pressed && styles.videoBtnPressed]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Watch tutorial for ${ex.name}`}
+                    >
+                      <Text style={styles.videoBtnIcon}>▶</Text>
+                      <Text style={styles.videoBtnText}>Watch tutorial</Text>
+                    </Pressable>
                   </View>
                 ))}
               </View>
@@ -138,6 +282,16 @@ function HomeBody() {
           </View>
         )}
       </ScrollView>
+
+      {activeVideo && (
+        <ExerciseVideoPlayer
+          videoId={activeVideo.id}
+          title={activeVideo.title}
+          visible={Boolean(activeVideo)}
+          onClose={() => setActiveVideo(null)}
+        />
+      )}
+
       <StatusBar style="light" />
     </KeyboardAvoidingView>
   );
@@ -186,6 +340,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     marginBottom: 10,
+  },
+  fieldLabel: {
+    color: MUTED,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
   },
   row: {
     flexDirection: 'row',
@@ -259,6 +419,13 @@ const styles = StyleSheet.create({
     minWidth: 120,
   },
   metaTime: { color: MUTED, fontSize: 13, fontWeight: '600' },
+  tailoring: {
+    color: MUTED,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 16,
+    fontStyle: 'italic',
+  },
   block: { marginBottom: 18 },
   blockTitle: {
     color: '#e2e8f0',
@@ -278,7 +445,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   exerciseName: { color: '#f8fafc', fontSize: 16, fontWeight: '700', marginBottom: 4 },
-  exerciseDetail: { color: MUTED, fontSize: 14, lineHeight: 20 },
+  exerciseDetail: { color: MUTED, fontSize: 14, lineHeight: 20, marginBottom: 10 },
+  videoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#132a22',
+    borderWidth: 1,
+    borderColor: '#1f4d3d',
+  },
+  videoBtnPressed: { opacity: 0.85 },
+  videoBtnIcon: { color: ACCENT, fontSize: 12, fontWeight: '800' },
+  videoBtnText: { color: ACCENT, fontSize: 13, fontWeight: '700' },
   secondaryBtn: {
     marginTop: 8,
     paddingVertical: 14,

@@ -1,4 +1,20 @@
-import type { InspirationKind, Exercise, WorkoutRoutine, WorkoutSection } from './types';
+import { withVideoUrl } from './exerciseVideos';
+import {
+  buildTailoringLabel,
+  getDurationPlan,
+  getDurationVolumeFactor,
+  getVolumeScale,
+  scaleExerciseDetail,
+} from './scaleVolume';
+import type {
+  InspirationKind,
+  Exercise,
+  ExerciseTemplate,
+  UserProfile,
+  WorkoutRoutine,
+  WorkoutSection,
+} from './types';
+import { DEFAULT_PROFILE } from './types';
 
 function fnv1a(str: string): number {
   let h = 2166136261;
@@ -20,12 +36,12 @@ function mulberry32(seed: number): () => number {
 
 function pickExercises(
   rng: () => number,
-  arr: Exercise[],
+  arr: ExerciseTemplate[],
   count: number,
   exclude?: Set<string>
-): Exercise[] {
+): ExerciseTemplate[] {
   const pool = [...arr];
-  const out: Exercise[] = [];
+  const out: ExerciseTemplate[] = [];
 
   for (let i = 0; i < count && pool.length; i++) {
     let idx = Math.floor(rng() * pool.length);
@@ -45,7 +61,7 @@ function pickExercises(
   return out;
 }
 
-const WARMUP_BASE: Exercise[] = [
+const WARMUP_BASE: ExerciseTemplate[] = [
   { name: 'Easy cardio', detail: '3 min — brisk walk, jog, or bike to raise core temperature' },
   { name: 'Arm circles', detail: '2 × 10 each direction — open the shoulders' },
   { name: 'Leg swings', detail: '10 front/back each leg — hips and hamstrings' },
@@ -54,7 +70,7 @@ const WARMUP_BASE: Exercise[] = [
   { name: 'Ankle rocks', detail: '10 each side — prep for jumps or direction changes' },
 ];
 
-const COOLDOWN_BASE: Exercise[] = [
+const COOLDOWN_BASE: ExerciseTemplate[] = [
   { name: 'Forward fold', detail: '45s — breathe into hamstrings' },
   { name: 'Figure-four stretch', detail: '60s each side — glutes and hips' },
   { name: 'Doorway pec stretch', detail: '45s each side — chest and posture' },
@@ -62,7 +78,7 @@ const COOLDOWN_BASE: Exercise[] = [
   { name: 'Supine twist', detail: '45s each side — spine unwind' },
 ];
 
-const SPORT_POOLS: Record<string, Exercise[]> = {
+const SPORT_POOLS: Record<string, ExerciseTemplate[]> = {
   run: [
     { name: 'Strides', detail: '6 × 80m @ comfortably hard — neuromuscular prep' },
     { name: 'Tempo intervals', detail: '4 × 3 min @ threshold, 90s easy — aerobic power' },
@@ -101,14 +117,14 @@ const SPORT_POOLS: Record<string, Exercise[]> = {
   ],
 };
 
-const CELEBRITY_FLAVOR: Exercise[] = [
+const CELEBRITY_FLAVOR: ExerciseTemplate[] = [
   { name: 'Red-carpet posture circuit', detail: '3 rounds: wall slides, band pull-aparts, dead bugs — camera-ready alignment' },
   { name: 'Stage stamina intervals', detail: '5 × 2 min hard / 1 min easy — performance energy' },
   { name: 'Hollywood pump superset', detail: '4 rounds: incline press + row — balanced upper body' },
   { name: 'Travel-ready hotel room AMRAP', detail: '15 min: push-ups, split squats, plank up-downs — minimal equipment' },
 ];
 
-const CHARACTER_FLAVOR: Exercise[] = [
+const CHARACTER_FLAVOR: ExerciseTemplate[] = [
   { name: 'Hero origin circuit', detail: '4 rounds: crawl, carry, sprint short — “training montage” density' },
   { name: 'Battle-ready complexes', detail: '5 rounds: kettlebell swing + goblet squat + push press — power stamina' },
   { name: 'Quest cardio', detail: '25 min mixed: incline walk bursts + bodyweight strength — long-journey endurance' },
@@ -133,10 +149,30 @@ function titleCase(raw: string): string {
     .join(' ');
 }
 
+function scaleExercise(ex: ExerciseTemplate, scale: number): Exercise {
+  return withVideoUrl({
+    name: ex.name,
+    detail: scaleExerciseDetail(ex.detail, scale),
+  });
+}
+
+interface SectionTemplate {
+  title: string;
+  exercises: ExerciseTemplate[];
+}
+
+function buildSections(templates: SectionTemplate[], scale: number): WorkoutSection[] {
+  return templates.map((sec) => ({
+    title: sec.title,
+    exercises: sec.exercises.map((ex) => scaleExercise(ex, scale)),
+  }));
+}
+
 export function generateWorkout(
   kind: InspirationKind,
   inspirationRaw: string,
-  variationSeed = 0
+  variationSeed = 0,
+  profile: UserProfile = DEFAULT_PROFILE
 ): WorkoutRoutine {
   const inspiration = inspirationRaw.trim() || 'Your inspiration';
   const labeled = titleCase(inspiration);
@@ -145,10 +181,12 @@ export function generateWorkout(
 
   const used = new Set<string>();
 
-  const warm = pickExercises(rng, WARMUP_BASE, 3, used);
-  const cool = pickExercises(rng, COOLDOWN_BASE, 3, used);
+  const plan = getDurationPlan(profile.durationMinutes);
 
-  let mainPool: Exercise[] = [];
+  const warm = pickExercises(rng, WARMUP_BASE, plan.warmCount, used);
+  const cool = pickExercises(rng, COOLDOWN_BASE, plan.coolCount, used);
+
+  let mainPool: ExerciseTemplate[] = [];
   let focusLabel = '';
 
   if (kind === 'sport') {
@@ -166,9 +204,9 @@ export function generateWorkout(
     focusLabel = `${labeled} — narrative stamina & heroic density`;
   }
 
-  const mainPick = pickExercises(rng, mainPool, 4, used);
+  const mainPick = pickExercises(rng, mainPool, plan.mainCount, used);
 
-  const conditioning: Exercise[] = [
+  const conditioning: ExerciseTemplate[] = [
     {
       name: 'Metabolic finisher',
       detail:
@@ -184,15 +222,18 @@ export function generateWorkout(
     },
   ];
 
-  const sections: WorkoutSection[] = [
+  const sectionTemplates: SectionTemplate[] = [
     { title: 'Warm-up', exercises: warm },
     { title: 'Main work', exercises: mainPick },
-    { title: 'Conditioning', exercises: pickExercises(rng, conditioning, 2, used) },
+    { title: 'Conditioning', exercises: pickExercises(rng, conditioning, plan.conditioningCount, used) },
     { title: 'Cool-down', exercises: cool },
   ];
 
-  const estimatedMinutes =
-    kind === 'sport' ? 45 + Math.floor(rng() * 20) : 40 + Math.floor(rng() * 25);
+  const profileScale = getVolumeScale(profile);
+  const volumeScale = profileScale * getDurationVolumeFactor(profile.durationMinutes);
+  const sections = buildSections(sectionTemplates, volumeScale);
+  const tailoringLabel = buildTailoringLabel(profile, profileScale);
+  const estimatedMinutes = profile.durationMinutes;
 
   const headline =
     kind === 'sport'
@@ -212,6 +253,7 @@ export function generateWorkout(
     headline,
     subtitle,
     focusLabel,
+    tailoringLabel,
     estimatedMinutes,
     sections,
   };
