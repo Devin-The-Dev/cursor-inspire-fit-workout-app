@@ -82,7 +82,9 @@ function HomeBody() {
   const [durationMinutes, setDurationMinutes] = useState<WorkoutDuration>(DEFAULT_PROFILE.durationMinutes);
   const [variation, setVariation] = useState(0);
   const [routine, setRoutine] = useState<WorkoutRoutine | null>(null);
-  const [activeVideo, setActiveVideo] = useState<{ id: string; title: string } | null>(null);
+  const [activeVideo, setActiveVideo] = useState<
+    { title: string; videos: { name: string; videoId: string }[] } | null
+  >(null);
 
   const hint = useMemo(() => KINDS.find((k) => k.key === kind)?.hint ?? '', [kind]);
   const profile = useMemo(
@@ -255,8 +257,16 @@ function HomeBody() {
                     <Text style={styles.exerciseDetail}>{ex.detail}</Text>
                     <Pressable
                       onPress={() => {
-                        if (ex.videoId) {
-                          setActiveVideo({ id: ex.videoId, title: ex.name });
+                        const playableVideos = ex.tutorialVideos.map((video) => ({
+                          name: video.name,
+                          videoId: video.videoId,
+                        }));
+
+                        if (playableVideos.length > 0) {
+                          setActiveVideo({
+                            title: ex.name,
+                            videos: playableVideos,
+                          });
                         } else {
                           Linking.openURL(ex.videoUrl);
                         }
@@ -285,8 +295,8 @@ function HomeBody() {
 
       {activeVideo && (
         <ExerciseVideoPlayer
-          videoId={activeVideo.id}
           title={activeVideo.title}
+          videos={activeVideo.videos}
           visible={Boolean(activeVideo)}
           onClose={() => setActiveVideo(null)}
         />

@@ -16,13 +16,13 @@ const ACCENT = '#34d399';
 const BG = '#0c1222';
 
 interface Props {
-  videoId: string;
   title: string;
+  videos: { name: string; videoId: string }[];
   visible: boolean;
   onClose: () => void;
 }
 
-export function ExerciseVideoPlayer({ videoId, title, visible, onClose }: Props) {
+export function ExerciseVideoPlayer({ title, videos, visible, onClose }: Props) {
   const { width } = useWindowDimensions();
   const playerWidth = width - 32;
   const playerHeight = Math.round((playerWidth * 9) / 16);
@@ -30,20 +30,33 @@ export function ExerciseVideoPlayer({ videoId, title, visible, onClose }: Props)
   const [playing, setPlaying] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const activeVideo = videos[activeIndex] ?? videos[0];
+  const activeVideoId = activeVideo?.videoId;
 
   useEffect(() => {
     if (visible) {
       setError(false);
       setReady(false);
       setPlaying(true);
+      setActiveIndex(0);
     } else {
       setPlaying(false);
     }
-  }, [visible, videoId]);
+  }, [visible, videos]);
+
+  useEffect(() => {
+    setError(false);
+    setReady(false);
+    setPlaying(true);
+  }, [activeVideoId]);
 
   const openInYouTube = useCallback(() => {
-    Linking.openURL(getYouTubeAppUrl(videoId));
-  }, [videoId]);
+    if (activeVideoId) {
+      Linking.openURL(getYouTubeAppUrl(activeVideoId));
+    }
+  }, [activeVideoId]);
 
   const onPlayerError = useCallback(() => {
     setError(true);
@@ -61,6 +74,29 @@ export function ExerciseVideoPlayer({ videoId, title, visible, onClose }: Props)
             <Text style={styles.closeText}>Close</Text>
           </Pressable>
         </View>
+
+        {videos.length > 1 && (
+          <View style={styles.subExerciseList}>
+            {videos.map((video, idx) => {
+              const isActive = idx === activeIndex;
+              return (
+                <Pressable
+                  key={`${video.name}-${video.videoId}`}
+                  onPress={() => setActiveIndex(idx)}
+                  style={({ pressed }) => [
+                    styles.subExerciseChip,
+                    isActive && styles.subExerciseChipActive,
+                    pressed && styles.subExerciseChipPressed,
+                  ]}
+                >
+                  <Text style={[styles.subExerciseText, isActive && styles.subExerciseTextActive]}>
+                    {video.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
 
         <View style={[styles.playerWrap, { height: playerHeight }]}>
           {error ? (
@@ -81,11 +117,11 @@ export function ExerciseVideoPlayer({ videoId, title, visible, onClose }: Props)
                 </View>
               )}
               <YoutubePlayer
-                key={videoId}
+                key={activeVideoId}
                 height={playerHeight}
                 width={playerWidth}
                 play={playing}
-                videoId={videoId}
+                videoId={activeVideoId}
                 onReady={() => setReady(true)}
                 onError={onPlayerError}
                 initialPlayerParams={{
@@ -137,6 +173,31 @@ const styles = StyleSheet.create({
   },
   closeBtn: { paddingVertical: 4 },
   closeText: { color: ACCENT, fontSize: 16, fontWeight: '700' },
+  subExerciseList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  subExerciseChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#2a364f',
+    backgroundColor: '#121a2e',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  subExerciseChipActive: {
+    borderColor: '#1f4d3d',
+    backgroundColor: '#132a22',
+  },
+  subExerciseChipPressed: { opacity: 0.85 },
+  subExerciseText: {
+    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  subExerciseTextActive: { color: ACCENT },
   playerWrap: {
     width: '100%',
     backgroundColor: '#000',

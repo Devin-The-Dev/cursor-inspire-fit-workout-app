@@ -25,9 +25,16 @@ export interface ExerciseTemplate {
   detail: string;
 }
 
+export interface ExerciseTutorialVideo {
+  name: string;
+  videoId: string;
+  videoUrl: string;
+}
+
 export interface Exercise extends ExerciseTemplate {
   videoUrl: string;
   videoId: string | null;
+  tutorialVideos: ExerciseTutorialVideo[];
 }
 
 export interface WorkoutSection {
