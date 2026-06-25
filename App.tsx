@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Linking,
@@ -74,6 +74,7 @@ function buildProfile(
 
 function HomeBody() {
   const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
   const [kind, setKind] = useState<InspirationKind>('sport');
   const [name, setName] = useState('');
   const [ageText, setAgeText] = useState(String(DEFAULT_PROFILE.age));
@@ -82,6 +83,8 @@ function HomeBody() {
   const [durationMinutes, setDurationMinutes] = useState<WorkoutDuration>(DEFAULT_PROFILE.durationMinutes);
   const [variation, setVariation] = useState(0);
   const [routine, setRoutine] = useState<WorkoutRoutine | null>(null);
+  const [routineStartY, setRoutineStartY] = useState<number | null>(null);
+  const [pendingRoutineScroll, setPendingRoutineScroll] = useState(false);
   const [activeVideo, setActiveVideo] = useState<
     { title: string; videos: { name: string; videoId: string }[] } | null
   >(null);
@@ -93,16 +96,25 @@ function HomeBody() {
   );
 
   const onGenerate = () => {
+    setPendingRoutineScroll(true);
     const next = variation + 1;
     setVariation(next);
     setRoutine(generateWorkout(kind, name, next, profile));
   };
 
   const onNewVariation = () => {
+    setPendingRoutineScroll(true);
     const next = variation + 1;
     setVariation(next);
     setRoutine(generateWorkout(kind, name, next, profile));
   };
+
+  useEffect(() => {
+    if (!pendingRoutineScroll || !routine || routineStartY === null) return;
+
+    scrollRef.current?.scrollTo({ y: Math.max(0, routineStartY - 8), animated: true });
+    setPendingRoutineScroll(false);
+  }, [pendingRoutineScroll, routine, routineStartY]);
 
   return (
     <KeyboardAvoidingView
@@ -110,6 +122,7 @@ function HomeBody() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -235,7 +248,10 @@ function HomeBody() {
         </Pressable>
 
         {routine && (
-          <View style={styles.resultCard}>
+          <View
+            style={styles.resultCard}
+            onLayout={(event) => setRoutineStartY(event.nativeEvent.layout.y)}
+          >
             <View style={styles.resultHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.resultTitle}>{routine.headline}</Text>
